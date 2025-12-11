@@ -1,0 +1,23 @@
+{
+  "name": "sales-dashboard-online",
+  "version": "1.0.0",
+  "description": "ระบบ Sales Dashboard เชื่อมต่อ SQL Server (NewStock) แบบ Online",
+  "main": "api_server.js",
+  "scripts": {
+    "start": "node api_server.js",
+    "dev": "nodemon api_server.js"
+  },
+  "keywords": [
+    "sales",
+    "dashboard",
+    "mssql",
+    "express"
+  ],
+  "author": "Admin",
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "mssql": "^10.0.1"
+  }
+}

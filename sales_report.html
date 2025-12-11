@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sales Dashboard - รายงานการขาย (แยกบาร์โค้ด)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style> 
+        body { font-family: 'Prompt', sans-serif; } 
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        // 🔴 แก้ไข IP ของ VPS ให้ถูกต้อง 🔴
+        const API_BASE_URL = 'http://localhost:3000'; 
+
+        const { useState, useMemo, useEffect } = React;
+
+        // Mock Data สำรอง (เพิ่ม field barcode)
+        const MOCK_DATA = [
+            { id: 1, date: '2023-12-01', billNo: 'IV-001', customer: 'ลูกค้าตัวอย่าง', product: 'สินค้า A', productCode: 'P001', barcode: '8850001001', group: 'ทั่วไป', brand: 'BrandX', qty: 10, unit: 'ชิ้น', price: 100, discount: 50, netTotal: 950 },
+            { id: 2, date: '2023-12-01', billNo: 'IV-002', customer: 'ลูกค้าตัวอย่าง', product: 'สินค้า B', productCode: 'P002', barcode: '8850001002', group: 'ทั่วไป', brand: 'BrandY', qty: 5, unit: 'ชิ้น', price: 200, discount: 0, netTotal: 1000 },
+        ];
+
+        const App = () => {
+            const [data, setData] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [error, setError] = useState(null);
+            const [filters, setFilters] = useState({ customer: '', product: '', group: '', brand: '', startDate: '', endDate: '' });
+
+            const fetchData = async () => {
+                setLoading(true);
+                setError(null);
+                try {
+                    const response = await fetch(`${API_BASE_URL}/api/sales`);
+                    if (!response.ok) throw new Error(`Status: ${response.status}`);
+                    const result = await response.json();
+                    setData(result);
+                } catch (err) {
+                    console.error("Fetch Error:", err);
+                    setError(`เชื่อมต่อ Server ไม่ได้ (${API_BASE_URL})`);
+                    setData(MOCK_DATA);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            useEffect(() => { fetchData(); }, []);
+
+            const groupOptions = useMemo(() => [...new Set(data.map(item => item.group))].sort(), [data]);
+            const brandOptions = useMemo(() => [...new Set(data.map(item => item.brand))].sort(), [data]);
+
+            const getDiscountPerUnit = (item) => item.discount / item.qty;
+            const getPriceAfterDiscount = (item) => item.price - (item.discount / item.qty);
+
+            const handleFilterChange = (e) => setFilters(prev => ({ ...prev, [e.target.name]: e.target.value }));
+            const resetFilters = () => setFilters({ customer: '', product: '', group: '', brand: '', startDate: '', endDate: '' });
+
+            const filteredData = useMemo(() => {
+                return data.filter(item => {
+                    const matchCustomer = item.customer.toLowerCase().includes(filters.customer.toLowerCase());
+                    const matchProduct = item.product.toLowerCase().includes(filters.product.toLowerCase()) || 
+                                         String(item.productCode || "").toLowerCase().includes(filters.product.toLowerCase()) ||
+                                         String(item.barcode || "").toLowerCase().includes(filters.product.toLowerCase()); // ค้นหาด้วยบาร์โค้ดได้ด้วย
+                    const matchGroup = filters.group ? item.group === filters.group : true;
+                    const matchBrand = filters.brand ? item.brand === filters.brand : true;
+                    let matchDate = true;
+                    if (filters.startDate && filters.endDate) matchDate = item.date >= filters.startDate && item.date <= filters.endDate;
+                    else if (filters.startDate) matchDate = item.date >= filters.startDate;
+                    else if (filters.endDate) matchDate = item.date <= filters.endDate;
+                    return matchCustomer && matchProduct && matchGroup && matchBrand && matchDate;
+                });
+            }, [data, filters]);
+
+            const grandTotal = filteredData.reduce((acc, item) => acc + item.netTotal, 0);
+
+            const exportToExcel = () => {
+                // เพิ่ม Header บาร์โค้ด
+                const headers = ["วันที่", "เลขที่บิล", "ลูกค้า", "รหัสสินค้า", "บาร์โค้ด", "ชื่อสินค้า", "กลุ่ม", "ยี่ห้อ", "จำนวน", "หน่วย", "ราคาเต็ม/หน่วย", "ส่วนลด/หน่วย", "ราคาหลังลด/หน่วย", "รวมเงินสุทธิ"];
+                const csvContent = [
+                    headers.join(","),
+                    ...filteredData.map(item => [
+                        `"${item.date}"`, `"${item.billNo}"`, `"${item.customer}"`, 
+                        `"${item.productCode}"`, `"${item.barcode}"`, // เพิ่มช่องบาร์โค้ดใน Excel
+                        `"${item.product}"`,
+                        `"${item.group}"`, `"${item.brand}"`, 
+                        item.qty, `"${item.unit}"`, 
+                        item.price,
+                        getDiscountPerUnit(item).toFixed(2),
+                        getPriceAfterDiscount(item).toFixed(2),
+                        item.netTotal
+                    ].join(","))
+                ].join("\n");
+                const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement("a"); link.setAttribute("href", url); 
+                link.setAttribute("download", `Sales_Report_${new Date().toISOString().slice(0,10)}.csv`);
+                document.body.appendChild(link); link.click(); document.body.removeChild(link);
+            };
+
+            return (
+                <div className="min-h-screen p-4 md:p-6 bg-slate-100 font-sans text-slate-800">
+                    <div className="max-w-[1800px] mx-auto space-y-6">
+                        
+                        {/* Header */}
+                        <header className="bg-white rounded-xl p-5 shadow-sm border border-slate-200 flex flex-col md:flex-row justify-between items-center gap-4">
+                            <div>
+                                <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-600"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+                                    Sales Dashboard
+                                </h1>
+                                <div className="flex items-center gap-2 mt-1 text-sm text-slate-500">
+                                    <span className={`w-2 h-2 rounded-full ${error ? 'bg-red-500' : 'bg-green-500'}`}></span>
+                                    {loading ? 'กำลังโหลด...' : error ? error : `แสดงข้อมูล ${filteredData.length} รายการ`}
+                                </div>
+                            </div>
+                            <div className="flex gap-4 items-center">
+                                <div className="text-right hidden md:block bg-slate-50 px-4 py-2 rounded-lg border border-slate-100">
+                                    <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">ยอดขายสุทธิ</div>
+                                    <div className="text-xl font-bold text-blue-600">฿ {grandTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
+                                </div>
+                                <button onClick={exportToExcel} className="bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-lg shadow-sm font-medium transition-colors flex items-center gap-2">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+                                    Export Excel
+                                </button>
+                            </div>
+                        </header>
+
+                        {/* Filters */}
+                        <section className="bg-white rounded-xl shadow-sm p-5 border border-slate-200">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                                <div className="lg:col-span-1 space-y-1">
+                                    <label className="text-xs font-bold text-slate-400 uppercase">ช่วงวันที่</label>
+                                    <div className="flex gap-2">
+                                        <input type="date" name="startDate" onChange={handleFilterChange} className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                                        <input type="date" name="endDate" onChange={handleFilterChange} className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                                    </div>
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-slate-400 uppercase">ลูกค้า</label>
+                                    <input type="text" name="customer" placeholder="ค้นหาชื่อ..." onChange={handleFilterChange} className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-slate-400 uppercase">สินค้า (ชื่อ/รหัส/บาร์โค้ด)</label>
+                                    <input type="text" name="product" placeholder="ค้นหา..." onChange={handleFilterChange} className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-slate-400 uppercase">กลุ่ม / ยี่ห้อ</label>
+                                    <div className="flex gap-2">
+                                        <select name="group" onChange={handleFilterChange} className="w-full border p-2 rounded text-sm bg-white"><option value="">ทุกกลุ่ม</option>{groupOptions.map(g => <option key={g} value={g}>{g}</option>)}</select>
+                                        <select name="brand" onChange={handleFilterChange} className="w-full border p-2 rounded text-sm bg-white"><option value="">ทุกยี่ห้อ</option>{brandOptions.map(b => <option key={b} value={b}>{b}</option>)}</select>
+                                    </div>
+                                </div>
+                                <div className="flex items-end pb-1">
+                                     <button onClick={resetFilters} className="text-red-500 hover:text-red-700 text-sm font-medium w-full border border-red-200 rounded py-2 hover:bg-red-50 transition-colors">ล้างค่าค้นหา</button>
+                                </div>
+                            </div>
+                        </section>
+
+                        {/* Table */}
+                        <section className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm text-left whitespace-nowrap">
+                                    <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold text-xs uppercase tracking-wider">
+                                        <tr>
+                                            <th className="px-4 py-3 text-center w-24">วันที่</th>
+                                            <th className="px-4 py-3 text-left w-32 border-l border-slate-100">เลขที่เอกสาร</th>
+                                            <th className="px-4 py-3 text-left w-48 border-l border-slate-100">ลูกค้า</th>
+                                            {/* เพิ่มคอลัมน์ Barcode */}
+                                            <th className="px-4 py-3 text-left w-24 border-l border-slate-100">รหัส</th>
+                                            <th className="px-4 py-3 text-left w-28 border-l border-slate-100">บาร์โค้ด</th>
+                                            <th className="px-4 py-3 text-left min-w-[200px] border-l border-slate-100">ชื่อสินค้า</th>
+                                            <th className="px-4 py-3 text-left border-l border-slate-100">กลุ่ม</th>
+                                            <th className="px-4 py-3 text-left border-l border-slate-100">ยี่ห้อ</th>
+                                            <th className="px-4 py-3 text-right border-l border-slate-100">จำนวน</th>
+                                            <th className="px-4 py-3 text-center">หน่วย</th>
+                                            <th className="px-4 py-3 text-right bg-yellow-50 text-yellow-800 border-l border-slate-100">ราคาเต็ม</th>
+                                            <th className="px-4 py-3 text-right text-red-600 border-l border-slate-100">ส่วนลด</th>
+                                            <th className="px-4 py-3 text-right bg-green-50 text-green-800 font-bold border-l border-slate-100">ราคาหลังลด</th>
+                                            <th className="px-4 py-3 text-right font-bold text-slate-800 border-l border-slate-100 bg-slate-50">รวมสุทธิ</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                        {loading ? 
+                                            <tr><td colSpan="14" className="text-center py-20 text-slate-400">กำลังโหลดข้อมูล...</td></tr> : 
+                                            filteredData.length === 0 ? 
+                                            <tr><td colSpan="14" className="text-center py-20 text-slate-400">ไม่พบข้อมูล</td></tr> :
+                                            filteredData.map(item => (
+                                            <tr key={item.id} className="hover:bg-blue-50 transition-colors group">
+                                                <td className="px-4 py-3 text-center text-slate-600 font-medium">{item.date}</td>
+                                                <td className="px-4 py-3 text-left border-l border-slate-100">
+                                                    <span className="font-mono text-blue-600 text-xs bg-blue-50 px-2 py-0.5 rounded">{item.billNo}</span>
+                                                </td>
+                                                <td className="px-4 py-3 text-left border-l border-slate-100 text-slate-700 truncate max-w-[180px]" title={item.customer}>{item.customer}</td>
+                                                
+                                                {/* รหัสสินค้า */}
+                                                <td className="px-4 py-3 text-left border-l border-slate-100 text-[10px] font-mono text-slate-500">
+                                                    {item.productCode}
+                                                </td>
+                                                
+                                                {/* บาร์โค้ด (เพิ่มใหม่) */}
+                                                <td className="px-4 py-3 text-left border-l border-slate-100 text-[10px] font-mono text-purple-600">
+                                                    {item.barcode}
+                                                </td>
+                                                
+                                                {/* ชื่อสินค้า */}
+                                                <td className="px-4 py-3 text-left border-l border-slate-100 font-medium text-slate-800">
+                                                    {item.product}
+                                                </td>
+
+                                                <td className="px-4 py-3 text-left border-l border-slate-100"><span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full">{item.group}</span></td>
+                                                <td className="px-4 py-3 text-left border-l border-slate-100"><span className="text-xs text-blue-500 font-medium">{item.brand}</span></td>
+                                                <td className="px-4 py-3 text-right font-medium border-l border-slate-100">{item.qty.toLocaleString()}</td>
+                                                <td className="px-4 py-3 text-center text-xs text-slate-500">{item.unit}</td>
+                                                <td className="px-4 py-3 text-right bg-yellow-50/30 text-slate-600 border-l border-slate-100">{item.price.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                                                <td className="px-4 py-3 text-right text-red-500 text-xs border-l border-slate-100">{getDiscountPerUnit(item) > 0 ? `-${getDiscountPerUnit(item).toLocaleString(undefined, {minimumFractionDigits: 2})}` : '-'}</td>
+                                                <td className="px-4 py-3 text-right bg-green-50/30 text-green-700 font-bold border-l border-slate-100">{getPriceAfterDiscount(item).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                                                <td className="px-4 py-3 text-right font-bold text-slate-900 border-l border-slate-100 bg-slate-50/50">{item.netTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                    <tfoot className="bg-slate-100 border-t border-slate-200">
+                                        <tr>
+                                            <td colSpan="13" className="px-6 py-4 text-right text-xs font-bold text-slate-500 uppercase">ยอดรวมสุทธิ (Grand Total)</td>
+                                            <td className="px-6 py-4 text-right text-lg font-bold text-blue-700 border-l border-slate-200 bg-slate-200/50">
+                                                ฿ {grandTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                            </td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                        </section>
+                    </div>
+                </div>
+            );
+        };
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
