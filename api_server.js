@@ -27,8 +27,8 @@ const dbConfig = {
 // --- SQL Query ---
 const query = `
     SELECT TOP 2000
-        -- [20] SellDate: วันที่เอกสาร (DateTime)
-        S.SellDate, 
+        -- [20] DateTime: วันที่เอกสาร (แก้ไขชื่อคอลัมน์เป็น DateTime)
+        S.[DateTime] AS SellDate, 
         
         -- [5] SellNumber: เลขที่เอกสาร (Key)
         S.SellNumber,
@@ -65,7 +65,7 @@ const query = `
     -- กรองสถานะยกเลิก (Status 1) ออก
     WHERE ISNULL(S.Status, 0) <> 1 
 
-    ORDER BY S.SellDate DESC
+    ORDER BY S.[DateTime] DESC
 `;
 
 app.get('/', (req, res) => {
