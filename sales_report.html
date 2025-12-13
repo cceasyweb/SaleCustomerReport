@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sales Dashboard - Debug Mode</title>
+    
+    <!-- Libraries -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js" crossorigin></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style> 
+        body { font-family: 'Prompt', sans-serif; } 
+        .error-container { background: #fee2e2; border: 2px solid #ef4444; color: #991b1b; padding: 20px; margin: 20px; border-radius: 8px; font-family: monospace; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+
+    <div id="root">
+        <div style="text-align: center; padding: 50px;">
+            <h1 style="font-size: 24px; color: #666;">⏳ กำลังเริ่มต้นระบบ...</h1>
+            <p style="color: #999;">หากค้างหน้านี้แสดงว่า React ไม่ทำงาน (กรุณาเช็คอินเทอร์เน็ต)</p>
+        </div>
+    </div>
+
+    <!-- Script สำหรับดักจับ Global Error -->
+    <script>
+        window.onerror = function(msg, url, line, col, error) {
+            document.body.innerHTML = `
+                <div class="error-container">
+                    <h2 style="font-weight:bold; font-size:1.2em;">💥 เกิดข้อผิดพลาดร้ายแรง (Global Error)</h2>
+                    <p><b>Error:</b> ${msg}</p>
+                    <p><b>Line:</b> ${line}</p>
+                    <pre style="background:#fff; padding:10px; margin-top:10px; overflow:auto;">${error ? error.stack : 'No stack trace'}</pre>
+                </div>
+            `;
+            return false;
+        };
+    </script>
+
+    <script type="text/babel">
+        class ErrorBoundary extends React.Component {
+            constructor(props) {
+                super(props);
+                this.state = { hasError: false, error: null, errorInfo: null };
+            }
+
+            static getDerivedStateFromError(error) {
+                return { hasError: true };
+            }
+
+            componentDidCatch(error, errorInfo) {
+                this.setState({ error: error, errorInfo: errorInfo });
+                console.error("React Crashed:", error, errorInfo);
+            }
+
+            render() {
+                if (this.state.hasError) {
+                    return (
+                        <div className="min-h-screen p-10 bg-red-50">
+                            <div className="bg-white p-6 rounded-lg shadow-xl border-l-4 border-red-500">
+                                <h1 className="text-2xl font-bold text-red-600 mb-4">💥 เกิดข้อผิดพลาดในการแสดงผล</h1>
+                                <p className="font-bold text-gray-700">{this.state.error && this.state.error.toString()}</p>
+                                <details className="mt-4 p-4 bg-gray-100 rounded text-sm font-mono whitespace-pre-wrap text-gray-600">
+                                    {this.state.errorInfo && this.state.errorInfo.componentStack}
+                                </details>
+                                <button onClick={() => window.location.reload()} className="mt-6 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700">
+                                    ลองโหลดใหม่
+                                </button>
+                            </div>
+                        </div>
+                    );
+                }
+                return this.props.children;
+            }
+        }
+
+        const API_BASE_URL = ''; 
+
+        const { useState, useMemo, useEffect } = React;
+
+        const App = () => {
+            const [data, setData] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [error, setError] = useState(null);
+            
+            // 🟢 ฟังก์ชันหาวันที่ปัจจุบัน (YYYY-MM-DD) ตามเวลาเครื่องผู้ใช้
+            const getToday = () => {
+                const d = new Date();
+                const year = d.getFullYear();
+                const month = String(d.getMonth() + 1).padStart(2, '0');
+                const day = String(d.getDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
+            };
+
+            // 🟢 กำหนดค่าเริ่มต้นให้เป็น "วันนี้"
+            const [filters, setFilters] = useState({ 
+                docNo: '', 
+                billNo: '', 
+                customer: '', 
+                product: '', 
+                group: '', 
+                brand: '', 
+                startDate: getToday(), 
+                endDate: getToday() 
+            });
+
+            const fetchData = async () => {
+                setLoading(true);
+                setError(null);
+                try {
+                    let baseUrl = window.location.origin;
+                    if (baseUrl === 'null' || baseUrl.startsWith('file://')) {
+                        throw new Error("⚠️ คุณกำลังเปิดไฟล์ตรงๆ (file://) กรุณาเปิดผ่าน http://localhost:3000");
+                    }
+
+                    const apiUrl = `${baseUrl}/api/sales`;
+                    console.log("Connecting to:", apiUrl);
+                    
+                    const response = await fetch(apiUrl);
+                    if (!response.ok) {
+                        const text = await response.text();
+                        throw new Error(`Server Error (${response.status}): ${text.slice(0, 100)}`);
+                    }
+                    const result = await response.json();
+                    
+                    if (!Array.isArray(result)) throw new Error("รูปแบบข้อมูลผิดพลาด (Server ไม่ได้ส่ง Array)");
+                    
+                    setData(result);
+                } catch (err) {
+                    console.error("Fetch Error:", err);
+                    setError(err.message);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            useEffect(() => { fetchData(); }, []);
+
+            const groupOptions = useMemo(() => [...new Set(data.map(item => item.group || '-'))].sort(), [data]);
+            const brandOptions = useMemo(() => [...new Set(data.map(item => item.brand || '-'))].sort(), [data]);
+
+            const handleFilterChange = (e) => setFilters(prev => ({ ...prev, [e.target.name]: e.target.value }));
+            
+            // 🟢 แก้ปุ่มล้างค่า ให้กลับมาเป็นวันนี้
+            const resetFilters = () => setFilters({ 
+                docNo: '', billNo: '', customer: '', product: '', group: '', brand: '', 
+                startDate: getToday(), 
+                endDate: getToday() 
+            });
+
+            const filteredData = useMemo(() => {
+                return data.filter(item => {
+                    const safeStr = (val) => String(val || '').toLowerCase();
+                    
+                    const matchDocNo = safeStr(item.docNo).includes(safeStr(filters.docNo));
+                    const matchBillNo = safeStr(item.billNo).includes(safeStr(filters.billNo));
+                    
+                    const matchCustomer = safeStr(item.customer).includes(safeStr(filters.customer));
+                    const matchProduct = safeStr(item.productName).includes(safeStr(filters.product)) || 
+                                         safeStr(item.productCode).includes(safeStr(filters.product)) ||
+                                         safeStr(item.barcode).includes(safeStr(filters.product)); 
+                    
+                    const matchGroup = filters.group ? item.group === filters.group : true;
+                    const matchBrand = filters.brand ? item.brand === filters.brand : true;
+                    
+                    let matchDate = true;
+                    if (filters.startDate && filters.endDate) matchDate = item.date >= filters.startDate && item.date <= filters.endDate;
+                    else if (filters.startDate) matchDate = item.date >= filters.startDate;
+                    else if (filters.endDate) matchDate = item.date <= filters.endDate;
+                    
+                    return matchDocNo && matchBillNo && matchCustomer && matchProduct && matchGroup && matchBrand && matchDate;
+                });
+            }, [data, filters]);
+
+            const grandTotal = filteredData.reduce((acc, item) => acc + (Number(item.total) || 0), 0);
+
+            const exportToExcel = () => {
+                // 🟢 เพิ่ม "วันที่" เข้าไปใน Excel
+                const headers = ["วันที่", "สาขา", "Doc No.", "เลขที่เอกสาร", "ชื่อลูกค้า", "รหัสสินค้า", "บาร์โค๊ด", "ชื่อสินค้า", "กลุ่มสินค้า", "ยี่ห้อสินค้า", "จำนวน", "หน่วย", "ราคา/หน่วย(สุทธิ)", "รวมสุทธิ"];
+                const csvContent = [
+                    headers.join(","),
+                    ...filteredData.map(item => [
+                        `"${item.date || ''}"`, // วันที่
+                        `"${item.branch || ''}"`,
+                        `"${item.docNo || ''}"`,
+                        `"${item.billNo || ''}"`,
+                        `"${item.customer || ''}"`,
+                        `"${item.productCode || ''}"`,
+                        `"${item.barcode || ''}"`,
+                        `"${item.productName || ''}"`,
+                        `"${item.group || ''}"`,
+                        `"${item.brand || ''}"`,
+                        item.qty || 0,
+                        `"${item.unit || ''}"`,
+                        (item.price || 0).toFixed(2),
+                        (item.total || 0).toFixed(2)
+                    ].join(","))
+                ].join("\n");
+                const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement("a"); link.setAttribute("href", url); 
+                link.setAttribute("download", `Sales_Report_SCR_${new Date().toISOString().slice(0,10)}.csv`);
+                document.body.appendChild(link); link.click(); document.body.removeChild(link);
+            };
+
+            return (
+                <div className="min-h-screen p-4 md:p-6 bg-slate-100 font-sans text-slate-800">
+                    <div className="w-full mx-auto space-y-6">
+                        <header className="bg-white rounded-xl p-5 shadow-sm border border-slate-200 flex flex-col md:flex-row justify-between items-center gap-4">
+                            <div>
+                                <h1 className="text-2xl font-bold text-slate-800">Sales Dashboard (New SCR)</h1>
+                                <div className="text-sm text-slate-500 mt-1">
+                                    <span className={`inline-block w-2 h-2 rounded-full mr-2 ${error ? 'bg-red-500' : 'bg-green-500'}`}></span>
+                                    {loading ? 'กำลังเชื่อมต่อ...' : error ? error : `Online: ${filteredData.length} รายการ`}
+                                </div>
+                            </div>
+                            <div className="flex gap-4 items-center">
+                                <div className="text-right hidden md:block bg-slate-50 px-4 py-2 rounded-lg border border-slate-100">
+                                    <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">รวมสุทธิ</div>
+                                    <div className="text-xl font-bold text-blue-600">฿ {grandTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
+                                </div>
+                                <button onClick={exportToExcel} className="bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-lg shadow-sm font-medium flex items-center gap-2">Export Excel</button>
+                            </div>
+                        </header>
+
+                        {/* Filters */}
+                        <section className="bg-white rounded-xl shadow-sm p-5 border border-slate-200">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-4">
+                                <div className="lg:col-span-1">
+                                    <input type="date" name="startDate" onChange={handleFilterChange} className="w-full border p-2 rounded text-sm" placeholder="วันที่เริ่ม" />
+                                </div>
+                                <div>
+                                    <input type="text" name="docNo" placeholder="ค้นหา Doc No..." onChange={handleFilterChange} className="w-full border p-2 rounded text-sm bg-blue-50/30" />
+                                </div>
+                                <div>
+                                    <input type="text" name="billNo" placeholder="ค้นหา เลขที่เอกสาร..." onChange={handleFilterChange} className="w-full border p-2 rounded text-sm bg-blue-50/30" />
+                                </div>
+                                <div>
+                                    <input type="text" name="customer" placeholder="ค้นหาลูกค้า..." onChange={handleFilterChange} className="w-full border p-2 rounded text-sm" />
+                                </div>
+                                <div>
+                                    <input type="text" name="product" placeholder="สินค้า/รหัส..." onChange={handleFilterChange} className="w-full border p-2 rounded text-sm" />
+                                </div>
+                                <div className="flex gap-2">
+                                    <select name="group" onChange={handleFilterChange} className="w-full border p-2 rounded text-sm"><option value="">ทุกกลุ่ม</option>{groupOptions.map(g => <option key={g} value={g}>{g}</option>)}</select>
+                                    <select name="brand" onChange={handleFilterChange} className="w-full border p-2 rounded text-sm"><option value="">ทุกยี่ห้อ</option>{brandOptions.map(b => <option key={b} value={b}>{b}</option>)}</select>
+                                </div>
+                                <div><button onClick={resetFilters} className="text-red-500 border border-red-200 w-full py-2 rounded text-sm hover:bg-red-50 transition-colors">ล้างค่า</button></div>
+                            </div>
+                        </section>
+
+                        {/* Table */}
+                        <section className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden overflow-x-auto">
+                            <table className="w-full text-sm text-left whitespace-nowrap">
+                                <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold text-xs uppercase tracking-wider">
+                                    <tr>
+                                        {/* 🟢 เพิ่มหัวตาราง "วันที่" */}
+                                        <th className="px-4 py-3 text-center">วันที่</th>
+                                        <th className="px-4 py-3 text-center">สาขา</th>
+                                        <th className="px-4 py-3 text-left border-l border-slate-100">Doc No.</th>
+                                        <th className="px-4 py-3 text-left border-l border-slate-100">เลขที่เอกสาร</th>
+                                        <th className="px-4 py-3 text-left border-l border-slate-100">ชื่อลูกค้า</th>
+                                        <th className="px-4 py-3 text-left border-l border-slate-100">รหัสสินค้า</th>
+                                        <th className="px-4 py-3 text-left border-l border-slate-100">บาร์โค๊ด</th>
+                                        <th className="px-4 py-3 text-left border-l border-slate-100">ชื่อสินค้า</th>
+                                        <th className="px-4 py-3 text-left border-l border-slate-100">กลุ่มสินค้า</th>
+                                        <th className="px-4 py-3 text-left border-l border-slate-100">ยี่ห้อสินค้า</th>
+                                        <th className="px-4 py-3 text-right border-l border-slate-100">จำนวน</th>
+                                        <th className="px-4 py-3 text-center border-l border-slate-100">หน่วย</th>
+                                        <th className="px-4 py-3 text-right border-l border-slate-100">ราคา/หน่วย</th>
+                                        <th className="px-4 py-3 text-right border-l border-slate-100 bg-slate-100 font-bold">รวมสุทธิ</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {loading ? <tr><td colSpan="14" className="text-center py-10 text-slate-400">กำลังโหลดข้อมูล...</td></tr> : 
+                                     filteredData.length === 0 ? <tr><td colSpan="14" className="text-center py-10 text-slate-400">ไม่พบข้อมูล</td></tr> :
+                                     filteredData.map((item, idx) => (
+                                        <tr key={idx} className="hover:bg-blue-50 transition-colors">
+                                            {/* 🟢 แสดงวันที่ */}
+                                            <td className="px-4 py-3 text-center font-medium text-slate-600">{item.date}</td>
+                                            <td className="px-4 py-3 text-center">{item.branch}</td>
+                                            <td className="px-4 py-3 text-left border-l border-slate-100 font-mono text-slate-700">{item.docNo}</td>
+                                            <td className="px-4 py-3 text-left border-l border-slate-100 text-blue-600 font-mono text-xs">{item.billNo}</td>
+                                            <td className="px-4 py-3 text-left border-l border-slate-100 truncate max-w-[150px]" title={item.customer}>{item.customer}</td>
+                                            <td className="px-4 py-3 text-left border-l border-slate-100 font-mono text-xs">{item.productCode}</td>
+                                            <td className="px-4 py-3 text-left border-l border-slate-100 font-mono text-xs text-purple-600">{item.barcode}</td>
+                                            <td className="px-4 py-3 text-left border-l border-slate-100 truncate max-w-[200px]" title={item.productName}>{item.productName}</td>
+                                            <td className="px-4 py-3 text-left border-l border-slate-100 text-xs text-slate-500">{item.group}</td>
+                                            <td className="px-4 py-3 text-left border-l border-slate-100 text-xs text-slate-500">{item.brand}</td>
+                                            <td className="px-4 py-3 text-right border-l border-slate-100 font-medium">{(item.qty || 0).toLocaleString()}</td>
+                                            <td className="px-4 py-3 text-center border-l border-slate-100 text-xs">{item.unit}</td>
+                                            <td className="px-4 py-3 text-right border-l border-slate-100 text-slate-600">{(item.price || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                                            <td className="px-4 py-3 text-right border-l border-slate-100 font-bold text-slate-800 bg-slate-50">{(item.total || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </section>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(
+            <ErrorBoundary>
+                <App />
+            </ErrorBoundary>
+        );
+    </script>
+</body>
+</html>

@@ -1,16 +1,17 @@
 /**
- * api_server.js (Final: Mapped with Excel Schema)
- * อ้างอิง: SQL ราคาขายสินค้าลูกค้าตามสินค้า - Sheet1.csv
+ * api_server.js
+ * Update: เพิ่มการแสดงผล "วันที่" (S.DateTime)
  */
 
 const express = require('express');
 const sql = require('mssql');
 const cors = require('cors');
+const path = require('path');
 const app = express();
 
 app.use(cors());
+app.use(express.static(__dirname));
 
-// --- Database Configuration ---
 const dbConfig = {
     user: 'NewStock',
     password: 'NewTech', // <--- 🔴 แก้รหัสผ่านให้ถูกต้อง
@@ -24,35 +25,27 @@ const dbConfig = {
     }
 };
 
-// --- SQL Query ---
 const query = `
     SELECT TOP 2000
-        -- [20] DateTime: วันที่เอกสาร (แก้ไขชื่อคอลัมน์เป็น DateTime)
+        -- 🟢 วันที่เอกสาร (DateTime)
         S.[DateTime] AS SellDate, 
         
-        -- [5] SellNumber: เลขที่เอกสาร (Key)
-        S.SellNumber,
+        S.BranchNumber,
+        ISNULL(S.DocNumber, '-') AS DocNumber,
+        ISNULL(S.BillNumber, S.SellNumber) AS BillNumber,
+        ISNULL(C.Name, 'ลูกค้าทั่วไป') AS CustomerName,
         
-        -- Customer Name
-        ISNULL(C.CustomerName, 'ลูกค้าทั่วไป') AS CustomerName,
+        ISNULL(P.ProductCode, P.PN) AS ProductCode,
+        ISNULL(P.Barcode, '-') AS Barcode, 
+        ISNULL(P.Name, 'ระบุชื่อไม่ได้') AS ProductName, 
         
-        -- Product Info
-        P.PN AS ProductCode,
-        ISNULL(P.Barcode, P.PN) AS Barcode, 
-        ISNULL(P.ProductName, SD.ItemName) AS ProductName, 
+        ISNULL(PG.Name, 'ไม่ระบุกลุ่ม') AS GroupName,
+        ISNULL(B.Name, '-') AS BrandName,
         
-        -- Group & Brand
-        ISNULL(PG.GroupName, 'ไม่ระบุกลุ่ม') AS GroupName,
-        ISNULL(B.BrandName, '-') AS BrandName,
-        
-        -- Sale Details
-        SD.Amount,
-        ISNULL(U.UnitName, 'หน่วย') AS UnitName,
-        SD.Price AS UnitPrice,
-        
-        -- Discount & Net
-        ISNULL(SD.Discount, 0) AS TotalDiscount,
-        (SD.Amount * SD.Price) - ISNULL(SD.Discount, 0) AS NetTotal
+        ISNULL(SD.Number, 0) AS Number,
+        ISNULL(SD.Lunit, 'หน่วย') AS Lunit,
+        ISNULL(SD.Price, 0) AS Price,
+        (ISNULL(SD.Number, 0) * ISNULL(SD.Price, 0)) AS SumPrice
 
     FROM dbo.Sell S
     INNER JOIN dbo.SellD SD ON S.BranchNumber = SD.BranchNumber AND S.SellNumber = SD.SellNumber
@@ -60,16 +53,13 @@ const query = `
     LEFT JOIN dbo.Product P ON SD.PN = P.PN
     LEFT JOIN dbo.ProductGroup PG ON P.GroupID = PG.ID
     LEFT JOIN dbo.Brand B ON P.BrandID = B.ID
-    LEFT JOIN dbo.Unit U ON P.UnitID = U.ID
     
-    -- กรองสถานะยกเลิก (Status 1) ออก
     WHERE ISNULL(S.Status, 0) <> 1 
-
     ORDER BY S.[DateTime] DESC
 `;
 
 app.get('/', (req, res) => {
-    res.send('<h1>Sales API Online 🟢</h1>');
+    res.sendFile(path.join(__dirname, 'sales_report.html'));
 });
 
 app.get('/api/sales', async (req, res) => {
@@ -79,23 +69,22 @@ app.get('/api/sales', async (req, res) => {
         
         const formattedData = result.recordset.map((item, index) => ({
             id: index + 1,
-            // แปลง DateTime เป็นวันที่ YYYY-MM-DD (ตัดเวลาออกเพื่อแสดงผล)
+            // แปลง DateTime เป็นรูปแบบ YYYY-MM-DD
             date: item.SellDate ? new Date(item.SellDate).toISOString().split('T')[0] : '-', 
-            // ถ้าอยากแสดงเวลาด้วย ให้ใช้บรรทัดล่างนี้แทนครับ
-            // date: item.SellDate ? new Date(item.SellDate).toLocaleString('th-TH') : '-',
             
-            billNo: item.SellNumber,
+            branch: item.BranchNumber,
+            docNo: item.DocNumber,
+            billNo: item.BillNumber,
             customer: item.CustomerName,
             productCode: item.ProductCode,
             barcode: item.Barcode,
-            product: item.ProductName,
+            productName: item.ProductName,
             group: item.GroupName,
             brand: item.BrandName,
-            qty: item.Amount,
-            unit: item.UnitName,
-            price: item.UnitPrice,
-            discount: item.TotalDiscount,
-            netTotal: item.NetTotal
+            qty: item.Number,
+            unit: item.Lunit,
+            price: item.Price,
+            total: item.SumPrice
         }));
 
         res.json(formattedData);
@@ -108,4 +97,5 @@ app.get('/api/sales', async (req, res) => {
 const PORT = 3000;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);
+    console.log(`🌐 Web Dashboard: http://localhost:${PORT}`);
 });
